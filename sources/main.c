@@ -60,7 +60,7 @@ void clear(char **list) {
 int main(int argc, char **argv) {
     int n = 0, fd;
  //   int size;
-    char **list = get_list(&size);
+    char **list = get_list();
     char finish1[] = "exit", finish2[] = "quit";
     char input[] = ">", output[] = "<";
     int input_flag, output_flag;
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
             }
         }
         clear(list);
-        list = get_list(&size);
+        list = get_list();
         if (input_flag || output_flag) {
             close(fd);
         }
