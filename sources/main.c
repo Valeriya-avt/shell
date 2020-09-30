@@ -24,7 +24,7 @@ char *get_word(char *end) {
     return word;
 }
 
-char **get_list(int *size) {
+char **get_list() {
     char **list = NULL;
     char end;
     int i = 0;
@@ -35,7 +35,7 @@ char **get_list(int *size) {
     } while (end != '\n');
     list = realloc(list, (i + 1) * sizeof(char *));
     list[i] = NULL;
-    *size = i;
+//    *size = i;
     return list;
 }
 
@@ -59,7 +59,7 @@ void clear(char **list) {
 
 int main(int argc, char **argv) {
     int n = 0, fd;
-    int size;
+ //   int size;
     char **list = get_list(&size);
     char finish1[] = "exit", finish2[] = "quit";
     char input[] = ">", output[] = "<";
@@ -85,12 +85,13 @@ int main(int argc, char **argv) {
             }
             if (input_flag) {
                 dup2(fd, 1);
-                free(list[n + 1]);
-                list[n] = NULL;
-            } else if (output_flag) {
+                free(list[n]);
+                list[n - 1] = NULL;
+            } 
+            if (output_flag) {
                 dup2(fd, 0);
-                free(list[n + 1]);
-                list[n] = NULL;
+                free(list[n]);
+                list[n - 1] = NULL;
             }
             if (execvp(list[0], list) < 0) {
                 perror("exec failed");
