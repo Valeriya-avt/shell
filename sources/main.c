@@ -24,7 +24,7 @@ char *get_word(char *end) {
     return word;
 }
 
-char **get_list(int *size) {
+char **get_list() {
     char **list = NULL;
     char end;
     int i = 0;
@@ -35,7 +35,7 @@ char **get_list(int *size) {
     } while (end != '\n');
     list = realloc(list, (i + 1) * sizeof(char *));
     list[i] = NULL;
-    *size = i;
+ //   *size = i;
     return list;
 }
 
@@ -57,12 +57,57 @@ void clear(char **list) {
     free(list);
 }
 
+int search_symbol(char **list, int *input, int *output, int *i) {
+    int n = *i;
+    int fd = -1;
+    char input_symbol[] = ">", output_symbol[] = "<";
+    int input_flag = *input, output_flag = *output;
+    while ((list[n] != NULL) && (!input_flag) && (!output_flag)) {
+        if (!strcmp(list[n], input_symbol) && list[n + 1] != NULL) {
+            fd = open(list[n + 1], O_WRONLY | O_CREAT | O_TRUNC,
+                 S_IRUSR | S_IWUSR);
+            input_flag = 1;
+        }
+        if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) {
+            fd = open(list[n + 1], O_RDONLY);
+            output_flag = 1;
+        }
+        n++;
+    }
+    *input = input_flag;
+    *output = output_flag;
+    *i = n;
+    return fd;
+}
+
+int checking_flags(char **list, int input_flag, int output_flag, int fd, int n) {
+    char *tmp;
+    if (input_flag) {
+        dup2(fd, 1);
+        free(list[n]);
+        tmp = list[n - 1];
+        list[n - 1] = NULL;
+        free(tmp);
+    }
+    if (output_flag) {
+        dup2(fd, 0);
+        free(list[n]);
+        tmp = list[n - 1];
+        list[n - 1] = NULL;
+        free(tmp);
+    }
+    if (execvp(list[0], list) < 0) {
+        perror("Is failed");
+        clear(list);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     int n = 0, fd;
-    int size;
-    char **list = get_list(&size);
+    char **list = get_list();
     char finish1[] = "exit", finish2[] = "quit";
-    char input[] = ">", output[] = "<";
     int input_flag, output_flag;
     while (strcmp(list[0], finish1) && strcmp(list[0], finish2)) {
     //    print_list(list, size);
@@ -71,34 +116,12 @@ int main(int argc, char **argv) {
         if (fork() > 0) {
             wait(NULL);
         } else {
-            while ((list[n] != NULL) && (!input_flag) && (!output_flag)) {
-                if (!strcmp(list[n], input) && list[n + 1] != NULL) {
-                    fd = open(list[n + 1], O_WRONLY | O_CREAT | O_TRUNC,
-                         S_IRUSR | S_IWUSR);
-                    input_flag = 1;
-                }
-                if (!strcmp(list[n], output) && list[n + 1] != NULL) {
-                    fd = open(list[n + 1], O_RDONLY);
-                    output_flag = 1;
-                }
-                n++;
-            }
-            if (input_flag) {
-                dup2(fd, 1);
-                free(list[n + 1]);
-                list[n] = NULL;
-            } else if (output_flag) {
-                dup2(fd, 0);
-                free(list[n + 1]);
-                list[n] = NULL;
-            }
-            if (execvp(list[0], list) < 0) {
-                perror("exec failed");
-                return 1;
-            }
+            fd = search_symbol(list, &input_flag, &output_flag, &n);
+                if (checking_flags(list, input_flag, output_flag, fd, n))
+                    return 1;
         }
         clear(list);
-        list = get_list(&size);
+        list = get_list();
         if (input_flag || output_flag) {
             close(fd);
         }
