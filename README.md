@@ -13,4 +13,5 @@
  
 ### How to use:
  First, let's look at the contents of the current directory. To do this, we will use the command **ls**.
- <p align="center">![~~ls~~](https://github.com/Valeriya-avt/shell/blob/master/images/sl.gif)</p>
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/sl.gif" width="80%"></p>
