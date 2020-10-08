@@ -139,30 +139,6 @@ char **search_io_symbol(char **list, int *output, int *input) {
     return list;
 }
 
-// int checking_flags(char **list, int input_flag, int output_flag, int fd, int n) {
-//     char *tmp;
-    // if (input_flag) { // если нашли знак >
-    //     dup2(fd, 1); // направили вывод программы в файл
-    //     free(list[n]); // удалили элемент с названием файла
-    //     tmp = list[n - 1]; //
-    //     list[n - 1] = NULL; // конец строки указывает на NULL
-    //     free(tmp); // удалили элемент со знаком >
-    // }
-    // if (output_flag) {
-    //     dup2(fd, 0); // теперь считывать будем из файла
-    //     free(list[n]);
-    //     tmp = list[n - 1];
-    //     list[n - 1] = NULL;
-    //     free(tmp);
-    // }
-    // if (execvp(list[0], list) < 0) {
-    //     perror("Is failed");
-    //     clear_cmd(list);
-    //     return 1;
-    // }
-//     return 0;
-// }
-
 // void create_pipe(char **cmd1, char **cmd2) {
 //     int fd[2];
 //     pipe(fd);
