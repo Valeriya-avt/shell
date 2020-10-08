@@ -14,4 +14,4 @@
  First, let's look at the contents of the current directory. To do this, we will use the command **ls**.
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/sl.gif" width="80%"></p>
- Oops! Well ... Now we know that the most <del>important</del> funniest command can work!
+ Oops! Well ... Now we know that the <del>most important</del> funniest command can work!
