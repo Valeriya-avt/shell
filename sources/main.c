@@ -9,13 +9,13 @@
 char *get_word(char *end) {
     char *word = NULL, alpha;
     int n = 0;
-    if (read(1, &alpha, sizeof(char)) < 0)
+    if (read(0, &alpha, sizeof(char)) < 0)
         perror("Is failed");
     while (alpha != ' ' && alpha != '\t' && alpha != '\n') {
         word = realloc(word, (n + 1) * sizeof(char));
         word[n] = alpha;
         n++;
-        if (read(1, &alpha, sizeof(char)) < 0)
+        if (read(0, &alpha, sizeof(char)) < 0)
             perror("Is failed");
     }
     word = realloc(word, (n + 1) * sizeof(char));
@@ -50,7 +50,7 @@ char **get_list(char *final_symbol) {
     return list;
 }
 
-char ***get_cmd_list() {
+char ***get_cmd_list(int *str_num) {
     int i = 0;
     char ***cmd_io_array = NULL;
     char end;
@@ -61,17 +61,9 @@ char ***get_cmd_list() {
     } while (end != '\n');
     cmd_io_array = realloc(cmd_io_array, (i + 1) * sizeof(char **));
     cmd_io_array[i] = NULL;
+    *str_num = i;
     return cmd_io_array;
 }
-
-//void print_list(char **list, int size) {
-//    int i;
-//    for (i = 0; i < size; i++) {
-//        write(0, list[i], strlen(list[i]) * sizeof(char));
-//        write(0, " ", sizeof(char));
-//    }
-//    putchar('\n');
-//}
 
 void clear_list(char ***list) {
     int i, j;
@@ -79,6 +71,7 @@ void clear_list(char ***list) {
         for (j = 0; list[i][j] != NULL; j++)
             free(list[i][j]);
         free(list[i][j]);
+        free(list[i]);
     }
     free(list[i]);
     free(list);
@@ -139,50 +132,55 @@ char **search_io_symbol(char **list, int *output, int *input) {
     return list;
 }
 
-// void create_pipe(char **cmd1, char **cmd2) {
-//     int fd[2];
-//     pipe(fd);
-//     if (fork() == 0) {
-//         dup2(fd[1], 1);
-//         close(fd[0]);
-//         close(fd[1]);
-//         execvp(cmd1[0], cmd1);
-//     }
-//     if (fork() == 0) {
-//         dup2(fd[0], 0);
-//         close(fd[0]);
-//         close(fd[1]);
-//         execvp(cmd2[0], cmd2);
-//     }
-//     close(fd[0]);
-//     close(fd[1]);
-//     wait(NULL);
-//     wait(NULL);
-// }
+void create_pipe(char ***list) {
+    int fd[2];
+    pipe(fd);
+    if (fork() == 0) {
+        dup2(fd[1], 1);
+        close(fd[0]);
+        close(fd[1]);
+        execvp(list[0][0], list[0]);
+    }
+    if (fork() == 0) {
+        dup2(fd[0], 0);
+        close(fd[0]);
+        close(fd[1]);
+        execvp(list[1][0], list[1]);
+    }
+    close(fd[0]);
+    close(fd[1]);
+    wait(NULL);
+    wait(NULL);
+}
 
-char ***run_commands(char ***list) {
+char ***run_commands(char ***list, int str_num) {
     int n = 0, output_fd, input_fd;
-    while (list[n] != NULL) {
-        output_fd = 1;
-        input_fd = 0;
-        if (fork() > 0) { // родительский процесс ждёт завершения дочернего
-            wait(NULL);
-        } else {
-            list[n] = search_io_symbol(list[n], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+    if (str_num > 1) {
+        create_pipe(list);
+    } else {
+        while (list[n] != NULL) {
+            output_fd = 1;
+            input_fd = 0;
+            if (fork() > 0) { // родительский процесс ждёт завершения дочернего
+                wait(NULL);
+            } else {
+                list[n] = search_io_symbol(list[n], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+            }
+            n++;
         }
-        n++;
     }
     return list;
 }
 
 int main(int argc, char **argv) {
-    char ***list = get_cmd_list();
+    int str_num;
+    char ***list = get_cmd_list(&str_num);
     char finish1[] = "exit", finish2[] = "quit";
     while (strcmp(list[0][0], finish1) && strcmp(list[0][0], finish2)) { // делаем fork, пока не встретим exit или quit
-        list = run_commands(list);
-        clear_list(list);
-        list = get_cmd_list();
-    }
+         list = run_commands(list, str_num);
+         clear_list(list);
+         list = get_cmd_list(&str_num);
+   }
     clear_list(list); //удаляем строку с exit или quit
     return 0;
 }
