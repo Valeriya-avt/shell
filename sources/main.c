@@ -65,6 +65,15 @@ char ***get_cmd_list(int *str_num) {
     return cmd_io_array;
 }
 
+//void print_list(char **list, int size) {
+//    int i;
+//    for (i = 0; i < size; i++) {
+//        write(0, list[i], strlen(list[i]) * sizeof(char));
+//        write(0, " ", sizeof(char));
+//    }
+//    putchar('\n');
+//}
+
 void clear_list(char ***list) {
     int i, j;
     for (i = 0; list[i] != NULL; i++) {
@@ -170,46 +179,39 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
     pid_t pids[10];
     int i, (*pipefd)[2];
     pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe // [3,4]   []>pipe>[]
-    for (i = 0; i < pipes; i++) {
+    for (i = 0; i < pipes; ++i) {
         if (i != (pipes - 1)) {
-            pipe(pipefd[i]); // [parent4]>pipe>parent3
-            printf("open %d %d\n", pipefd[i][0], pipefd[i][1]);
+            pipe(pipefd[i]); // [parent4]>pipe[0]>parent3
+  //          printf("open %d %d\n", pipefd[i][0], pipefd[i][1]);
         }
-        pids[i] = fork(); // child4, parent4 >pipe> child3, parent3
+        pids[i] = fork(); // child4, parent4 >pipe[0]> child3, parent3
         if (pids[i] == 0) {
             if (i != 0) {
                 dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
-//                printf("close in for1.1 %d %d\n", pipefd[i - 1][0], pipefd[i - 1][1]);
-                close(pipefd[i - 1][0]);
+   //             printf("close %d %d in %u child %d %u\n", pipefd[i - 1][0], pipefd[i - 1][1], getpid(), i, getppid());
                 close(pipefd[i - 1][1]);
+                close(pipefd[i - 1][0]);
             }
             if (i != (pipes - 1)) {
-                dup2(pipefd[i][1], 1); // пишем в текущий pipe
-//                printf("close in for1.2 %d %d\n", pipefd[i][0], pipefd[i][1]);
-                close(pipefd[i][0]);
-                close(pipefd[i][1]);
+                dup2(pipefd[i][1], 1); // пишем в текущий pipe // child1, child4, parent4 >pipe[0]> child3, parent3
+   //             printf("close %d %d in %u child %d %u\n", pipefd[i][0], pipefd[i][1], getpid(), i, getppid());
+                close(pipefd[i][0]); // child1, child4, parent4 > pipe[0] > parent3
+                close(pipefd[i][1]); // child1, parent4 > pipe[0] > parent3
             }
-            puts("list[i][0]");
+            for (int j = 0; j < i - 1; j++) {
+                close(pipefd[j][0]); // child1, child4, parent4 > pipe[0] > parent3
+                close(pipefd[j][1]);
+            }
             execvp(list[i][0], list[i]);
         }
     }
     for (i = 0; i < pipes; i++) {
-   //     if (pids[i] > 0) {
-            if (i != 0) {
- //               printf("close in for2 %d %d\n", pipefd[i - 1][0], pipefd[i - 1][1]);
-                close(pipefd[i - 1][0]);
-                close(pipefd[i - 1][1]);
-            }
-            if (i != (pipes - 1)) {
- //               printf("close in for2 %d %d\n", pipefd[i][0], pipefd[i][1]);
-                close(pipefd[i][0]);
-                close(pipefd[i][1]);
-            }
-   //     }
-    //    if (pids[i] > 0) {
- //           printf("wait %d\n", pids[i]);
-            waitpid(pids[i], NULL, 0);
-    //    }
+        if (i != (pipes - 1)) {
+            close(pipefd[i][0]);
+            close(pipefd[i][1]);
+        }
+        waitpid(pids[i], NULL, 0);
+        pids[i] = 0;
     }
     free(pipefd);
 }
