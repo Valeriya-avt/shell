@@ -70,10 +70,10 @@ void clear_list(char ***list) {
     for (i = 0; list[i] != NULL; i++) {
         for (j = 0; list[i][j] != NULL; j++)
             free(list[i][j]);
-        free(list[i][j]);
+ //       free(list[i][j]);
         free(list[i]);
     }
-    free(list[i]);
+ //   free(list[i]);
     free(list);
 }
 
@@ -85,20 +85,20 @@ void clear_cmd(char **cmd) {
     free(cmd);
 }
 
-void checking_descriptors(char **list, int output_fd, int input_fd, int fd, int n) {
+void checking_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
     char *tmp;
-    if (output_fd == fd) { // если нашли знак >
-        dup2(fd, 1); // направили вывод программы в файл
-        free(list[n]); // удалили элемент с названием файла
-        tmp = list[n - 1]; //
-        list[n - 1] = NULL; // конец строки указывает на NULL
+    if (output_index > 0) { // если нашли знак >
+        dup2(output_fd, 1); // направили вывод программы в файл
+        free(list[output_index + 1]); // удалили элемент с названием файла
+        tmp = list[output_index];
+        list[output_index] = NULL; // конец строки указывает на NULL
         free(tmp); // удалили элемент со знаком >
     }
-    if (input_fd == fd) {
-        dup2(fd, 0); // теперь считывать будем из файла
-        free(list[n]);
-        tmp = list[n - 1];
-        list[n - 1] = NULL;
+    if (input_index > 0) {
+        dup2(input_fd, 0); // теперь считывать будем из файла
+        free(list[input_index + 1]);
+        tmp = list[input_index];
+        list[input_index] = NULL;
         free(tmp);
     }
     if (execvp(list[0], list) < 0) {
@@ -106,42 +106,55 @@ void checking_descriptors(char **list, int output_fd, int input_fd, int fd, int 
         clear_cmd(list);
         return;
     }
-    if (fd > 0) { // если открыли fd, закроем его
-        close(fd);
-    }
-
+    if (output_fd > 0) // если открыли fd, закроем его
+        close(output_fd);
+    if (input_fd > 0)
+        close(input_fd);
 }
 
 char **search_io_symbol(char **list, int *output, int *input) {
-    int n = 0;
-    int fd = -1; // изначально файл не открыт
+    int n = 0, output_flag = 0, input_flag = 0;
+ //   int fd = -1; // изначально файл не открыт
+    int input_index = -1, output_index = -1; // изначально символы < > не найдены
     char output_symbol[] = ">", input_symbol[] = "<"; // сохраним символы, которые будем искать
     int output_fd = *output, input_fd = *input; // для удобства заведём локальные флаги
-    while ((list[n] != NULL) && (output_fd == 1) && (input_fd == 0)) { // будем бежать по строке, пока не найдём < или >
+    while (list[n] != NULL) { // будем бежать до конца строки
         if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // если нашли знак >
-            fd = open(list[n + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); // открыли файл на запись (считаем, что имя файла идёт сразу после >)
-            output_fd = fd;
+            if (output_flag) {
+                close(output_fd);
+                puts("Is failed");
+                exit(1);
+            }
+            output_fd = open(list[n + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); // открыли файл на запись (считаем, что имя файла идёт сразу после >)
+            output_index = n;
+            output_flag++;
         }
         if (!strcmp(list[n], input_symbol) && list[n + 1] != NULL) { // если нашли знак <
-            fd = open(list[n + 1], O_RDONLY); // открыли файл на чтение
-            input_fd = fd; // выставили флаг
+            if (input_flag) {
+                close(input_fd);
+                puts("Is failed");
+                exit(1);
+            }
+            input_fd = open(list[n + 1], O_RDONLY); // открыли файл на чтение
+            input_index = n;
+            input_flag++;
         }
-        n++; // обновляем счётчик
+        n++;
     }
-    checking_descriptors(list, output_fd, input_fd, fd, n);
+    checking_descriptors(list, output_fd, input_fd, output_index, input_index);
     return list;
 }
 
 void create_pipe(char ***list) {
     int fd[2];
     pipe(fd);
-    if (fork() == 0) {
+    if (fork() == 0) { // направим поток вывода первого процесса в pipe
         dup2(fd[1], 1);
         close(fd[0]);
         close(fd[1]);
         execvp(list[0][0], list[0]);
     }
-    if (fork() == 0) {
+    if (fork() == 0) { // будем читать из pipe
         dup2(fd[0], 0);
         close(fd[0]);
         close(fd[1]);
@@ -153,10 +166,59 @@ void create_pipe(char ***list) {
     wait(NULL);
 }
 
+void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
+    pid_t pids[10];
+    int i, (*pipefd)[2];
+    pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe // [3,4]   []>pipe>[]
+    for (i = 0; i < pipes; i++) {
+        if (i != (pipes - 1)) {
+            pipe(pipefd[i]); // [parent4]>pipe>parent3
+            printf("open %d %d\n", pipefd[i][0], pipefd[i][1]);
+        }
+        pids[i] = fork(); // child4, parent4 >pipe> child3, parent3
+        if (pids[i] == 0) {
+            if (i != 0) {
+                dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
+//                printf("close in for1.1 %d %d\n", pipefd[i - 1][0], pipefd[i - 1][1]);
+                close(pipefd[i - 1][0]);
+                close(pipefd[i - 1][1]);
+            }
+            if (i != (pipes - 1)) {
+                dup2(pipefd[i][1], 1); // пишем в текущий pipe
+//                printf("close in for1.2 %d %d\n", pipefd[i][0], pipefd[i][1]);
+                close(pipefd[i][0]);
+                close(pipefd[i][1]);
+            }
+            puts("list[i][0]");
+            execvp(list[i][0], list[i]);
+        }
+    }
+    for (i = 0; i < pipes; i++) {
+   //     if (pids[i] > 0) {
+            if (i != 0) {
+ //               printf("close in for2 %d %d\n", pipefd[i - 1][0], pipefd[i - 1][1]);
+                close(pipefd[i - 1][0]);
+                close(pipefd[i - 1][1]);
+            }
+            if (i != (pipes - 1)) {
+ //               printf("close in for2 %d %d\n", pipefd[i][0], pipefd[i][1]);
+                close(pipefd[i][0]);
+                close(pipefd[i][1]);
+            }
+   //     }
+    //    if (pids[i] > 0) {
+ //           printf("wait %d\n", pids[i]);
+            waitpid(pids[i], NULL, 0);
+    //    }
+    }
+    free(pipefd);
+}
+
 char ***run_commands(char ***list, int str_num) {
     int n = 0, output_fd, input_fd;
-    if (str_num > 1) {
-        create_pipe(list);
+    if (str_num > 1) { // && !flag
+        create_pipes(list, str_num);
+  //      create_pipe(list);
     } else {
         while (list[n] != NULL) {
             output_fd = 1;
