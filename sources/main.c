@@ -65,24 +65,15 @@ char ***get_cmd_list(int *str_num) {
     return cmd_io_array;
 }
 
-//void print_list(char **list, int size) {
-//    int i;
-//    for (i = 0; i < size; i++) {
-//        write(0, list[i], strlen(list[i]) * sizeof(char));
-//        write(0, " ", sizeof(char));
-//    }
-//    putchar('\n');
-//}
-
 void clear_list(char ***list) {
     int i, j;
     for (i = 0; list[i] != NULL; i++) {
         for (j = 0; list[i][j] != NULL; j++)
             free(list[i][j]);
- //       free(list[i][j]);
+        free(list[i][j]);
         free(list[i]);
     }
- //   free(list[i]);
+    free(list[i]);
     free(list);
 }
 
@@ -94,7 +85,7 @@ void clear_cmd(char **cmd) {
     free(cmd);
 }
 
-void checking_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
+void change_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
     char *tmp;
     if (output_index > 0) { // если нашли знак >
         dup2(output_fd, 1); // направили вывод программы в файл
@@ -110,24 +101,63 @@ void checking_descriptors(char **list, int output_fd, int input_fd, int output_i
         list[input_index] = NULL;
         free(tmp);
     }
-    if (execvp(list[0], list) < 0) {
-        perror("Is failed");
-        clear_cmd(list);
-        return;
-    }
-    if (output_fd > 0) // если открыли fd, закроем его
-        close(output_fd);
-    if (input_fd > 0)
-        close(input_fd);
 }
 
-char **search_io_symbol(char **list, int *output, int *input) {
+char *path_to_parent(char *old_path) {
+    char *parent = NULL;
+    int i, dir_counter = 0;
+    for (i = 0; old_path != NULL && old_path[i] != '\0'; i++) {
+        if (old_path[i] == '/')
+            dir_counter++;
+    }
+    for (i = 0; dir_counter; i++) {
+        if (old_path[i] == '/')
+            dir_counter--;
+    }
+    parent = malloc((i + 1) * sizeof(char));
+    memcpy(parent, old_path, i);
+    parent[i] = '\0';
+    return parent;
+}
+
+int change_directory(char **list) {
+    char *home = getenv("HOME"); // запомнили домашнюю директорию
+    char *old_path = getenv("PWD");
+    char *parent = NULL, *new_path = NULL;
+    if (!strcmp((list[0]), "cd")) {
+        if (list[1] == NULL || !strcmp(list[1], "~")) {
+            chdir(home);
+            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
+            setenv(new_path, "PWD", 1);
+        }
+        if (!strcmp(list[1], "-")) {
+            if (!strcmp(home, old_path)) {
+                parent = home;
+            } else {
+                parent = path_to_parent(old_path);
+            }
+            chdir(parent);
+            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
+            setenv(new_path, "PWD", 1);
+        }
+        else {
+            chdir(list[1]);
+            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
+            setenv(new_path, "PWD", 1);
+        }
+        return 1;
+    }
+    if (parent != NULL)
+        free(parent);
+    return 0;
+}
+
+void search_io_symbol(char **list, int *output, int *input) {
     int n = 0, output_flag = 0, input_flag = 0;
- //   int fd = -1; // изначально файл не открыт
     int input_index = -1, output_index = -1; // изначально символы < > не найдены
     char output_symbol[] = ">", input_symbol[] = "<"; // сохраним символы, которые будем искать
     int output_fd = *output, input_fd = *input; // для удобства заведём локальные флаги
-    while (list[n] != NULL) { // будем бежать до конца строки
+    while (list[n] != NULL && output_flag >= 0 && input_flag >= 0) { // будем бежать до конца строки
         if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // если нашли знак >
             if (output_flag) {
                 close(output_fd);
@@ -150,8 +180,9 @@ char **search_io_symbol(char **list, int *output, int *input) {
         }
         n++;
     }
-    checking_descriptors(list, output_fd, input_fd, output_index, input_index);
-    return list;
+    if ((input_flag != -1 && output_flag != -1) && (input_flag || output_flag)) {
+        change_descriptors(list, output_fd, input_fd, output_index, input_index);
+    }
 }
 
 void create_pipe(char ***list) {
@@ -177,29 +208,32 @@ void create_pipe(char ***list) {
 
 void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
     pid_t pids[10];
-    int i, (*pipefd)[2];
+    int (*pipefd)[2], i;
     pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe // [3,4]   []>pipe>[]
     for (i = 0; i < pipes; ++i) {
         if (i != (pipes - 1)) {
-            pipe(pipefd[i]); // [parent4]>pipe[0]>parent3
-  //          printf("open %d %d\n", pipefd[i][0], pipefd[i][1]);
+            pipe(pipefd[i]);
         }
-        pids[i] = fork(); // child4, parent4 >pipe[0]> child3, parent3
+        pids[i] = fork();
         if (pids[i] == 0) {
             if (i != 0) {
                 dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
-   //             printf("close %d %d in %u child %d %u\n", pipefd[i - 1][0], pipefd[i - 1][1], getpid(), i, getppid());
+                if (i == pipes - 1) {
+                    search_io_symbol(list[i], &pipefd[i - 1][1], &pipefd[i - 1][0]);
+                }
                 close(pipefd[i - 1][1]);
                 close(pipefd[i - 1][0]);
             }
             if (i != (pipes - 1)) {
-                dup2(pipefd[i][1], 1); // пишем в текущий pipe // child1, child4, parent4 >pipe[0]> child3, parent3
-   //             printf("close %d %d in %u child %d %u\n", pipefd[i][0], pipefd[i][1], getpid(), i, getppid());
-                close(pipefd[i][0]); // child1, child4, parent4 > pipe[0] > parent3
-                close(pipefd[i][1]); // child1, parent4 > pipe[0] > parent3
+                dup2(pipefd[i][1], 1); // пишем в текущий pipe
+                if (!i) {
+                    search_io_symbol(list[i], &pipefd[i][1], &pipefd[i][0]);
+                }
+                close(pipefd[i][0]);
+                close(pipefd[i][1]);
             }
             for (int j = 0; j < i - 1; j++) {
-                close(pipefd[j][0]); // child1, child4, parent4 > pipe[0] > parent3
+                close(pipefd[j][0]);
                 close(pipefd[j][1]);
             }
             execvp(list[i][0], list[i]);
@@ -217,21 +251,21 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
 }
 
 char ***run_commands(char ***list, int str_num) {
-    int n = 0, output_fd, input_fd;
+    int output_fd, input_fd;
     if (str_num > 1) { // && !flag
         create_pipes(list, str_num);
-  //      create_pipe(list);
     } else {
-        while (list[n] != NULL) {
             output_fd = 1;
             input_fd = 0;
             if (fork() > 0) { // родительский процесс ждёт завершения дочернего
                 wait(NULL);
             } else {
-                list[n] = search_io_symbol(list[n], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+                search_io_symbol(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+                if (execvp(list[0][0], list[0]) < 0) {
+                    perror("Is failed");
+                    clear_list(list);
+                }
             }
-            n++;
-        }
     }
     return list;
 }
