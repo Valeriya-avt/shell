@@ -128,35 +128,36 @@ int change_directory(char **list) {
         if (list[1] == NULL || !strcmp(list[1], "~")) {
             chdir(home);
             new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-            setenv(new_path, "PWD", 1);
-        }
-        if (!strcmp(list[1], "-")) {
-            if (!strcmp(home, old_path)) {
-                parent = home;
+            setenv("PWD", new_path, 1);
+        } else {
+            if (!strcmp(list[1], "-")) {
+                if (!strcmp(home, old_path)) {
+                    parent = home;
+                } else {
+                    parent = path_to_parent(old_path);
+                }
+                chdir(parent);
+                new_path = getcwd(new_path, strlen(old_path) + strlen(home));
+                setenv("PWD", new_path, 1);
             } else {
-                parent = path_to_parent(old_path);
+                chdir(list[1]);
+                new_path = getcwd(new_path, strlen(old_path) + strlen(home));
+                setenv("PWD", new_path, 1);
             }
-            chdir(parent);
-            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-            setenv(new_path, "PWD", 1);
         }
-        else {
-            chdir(list[1]);
-            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-            setenv(new_path, "PWD", 1);
-        }
-        return 1;
+        if (parent != NULL)
+            free(parent);
+        free(new_path);
+        return 0;
     }
-    if (parent != NULL)
-        free(parent);
-    return 0;
+    return 1;
 }
 
 void search_io_symbol(char **list, int *output, int *input) {
     int n = 0, output_flag = 0, input_flag = 0;
     int input_index = -1, output_index = -1; // изначально символы < > не найдены
     char output_symbol[] = ">", input_symbol[] = "<"; // сохраним символы, которые будем искать
-    int output_fd = *output, input_fd = *input; // для удобства заведём локальные флаги
+    int output_fd = *output, input_fd = *input;
     while (list[n] != NULL && output_flag >= 0 && input_flag >= 0) { // будем бежать до конца строки
         if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // если нашли знак >
             if (output_flag) {
@@ -185,31 +186,10 @@ void search_io_symbol(char **list, int *output, int *input) {
     }
 }
 
-void create_pipe(char ***list) {
-    int fd[2];
-    pipe(fd);
-    if (fork() == 0) { // направим поток вывода первого процесса в pipe
-        dup2(fd[1], 1);
-        close(fd[0]);
-        close(fd[1]);
-        execvp(list[0][0], list[0]);
-    }
-    if (fork() == 0) { // будем читать из pipe
-        dup2(fd[0], 0);
-        close(fd[0]);
-        close(fd[1]);
-        execvp(list[1][0], list[1]);
-    }
-    close(fd[0]);
-    close(fd[1]);
-    wait(NULL);
-    wait(NULL);
-}
-
 void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
     pid_t pids[10];
     int (*pipefd)[2], i;
-    pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe // [3,4]   []>pipe>[]
+    pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe
     for (i = 0; i < pipes; ++i) {
         if (i != (pipes - 1)) {
             pipe(pipefd[i]);
@@ -255,17 +235,19 @@ char ***run_commands(char ***list, int str_num) {
     if (str_num > 1) { // && !flag
         create_pipes(list, str_num);
     } else {
-            output_fd = 1;
-            input_fd = 0;
-            if (fork() > 0) { // родительский процесс ждёт завершения дочернего
-                wait(NULL);
-            } else {
-                search_io_symbol(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
-                if (execvp(list[0][0], list[0]) < 0) {
-                    perror("Is failed");
-                    clear_list(list);
-                }
+        if (!change_directory(list[0]))
+            return list;
+        output_fd = 1;
+        input_fd = 0;
+        if (fork() > 0) { // родительский процесс ждёт завершения дочернего
+            wait(NULL);
+        } else {
+            search_io_symbol(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+            if (execvp(list[0][0], list[0]) < 0) {
+                perror("Is failed");
+                clear_list(list);
             }
+        }
     }
     return list;
 }
