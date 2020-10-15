@@ -24,24 +24,29 @@ char *get_word(char *end) {
     return word;
 }
 
-char **get_list(char *final_symbol) {
+char **get_list(char *final_symbol, int *old_pipe_num) {
     char **list = NULL;
-    char separator[] = "|";
+    char pipeline_word[] = "&&", pipe_conv_symbol[] = "|";
     char end;
-    int i = 0, separator_flag = 0;
+    int i = 0, pipeline_flag = 0, new_pipe_num = *old_pipe_num;
     do {
         list = realloc(list, (i + 1) * sizeof(char *));
         list[i] = get_word(&end);
-        if (!strcmp(list[i], separator)) {
+        if (!strcmp(list[i], pipeline_word)) {
             *final_symbol = end;
-            separator_flag = 1;
+            pipeline_flag = 1;
+        }
+        if (!strcmp(list[i], pipe_conv_symbol)) {
+            *final_symbol = end;
+            new_pipe_num++;
         }
         i++;
-    } while ((end != '\n') && (!separator_flag));
-    if (separator_flag) {
+    } while ((end != '\n') && (!pipeline_flag) && (new_pipe_num == *old_pipe_num));
+    if (pipeline_flag || new_pipe_num != *old_pipe_num) {
         free(list[i - 1]);
         list[i - 1] = NULL;
         *final_symbol = '\0';
+        *old_pipe_num = new_pipe_num;
         return list;
     }
     list = realloc(list, (i + 1) * sizeof(char *));
@@ -50,13 +55,14 @@ char **get_list(char *final_symbol) {
     return list;
 }
 
-char ***get_cmd_list(int *str_num) {
+char ***get_cmd_list(int *str_num, int *pipe_num) {
     int i = 0;
     char ***cmd_io_array = NULL;
     char end;
+    *pipe_num = 0;
     do {
         cmd_io_array = realloc(cmd_io_array, (i + 1) * sizeof(char **));
-        cmd_io_array[i] = get_list(&end);
+        cmd_io_array[i] = get_list(&end, pipe_num);
         i++;
     } while (end != '\n');
     cmd_io_array = realloc(cmd_io_array, (i + 1) * sizeof(char **));
@@ -214,36 +220,46 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
     free(pipefd);
 }
 
-char ***run_commands(char ***list, int str_num) {
-    int output_fd, input_fd;
-    if (str_num > 1) { // && !flag
+void pipeline_of_commands(char ***list, int cmd_num) {
+    int i, input_fd, output_fd, child_status;
+    for (i = 0; i < cmd_num; i++) {
+        if (!cd_command(list[i]))
+            return;
+        input_fd = 0;
+        output_fd = 1;
+        if (fork() == 0) {
+            check_symbols(list[i], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+            if (execvp(list[i][0], list[i]) < 0) {
+                perror("Is failed");
+             //   clear_list(list);
+                return;
+            }
+        } else {
+            wait(&child_status);
+            if (child_status != 0)
+                return;
+        }
+    }
+}
+
+char ***run_commands(char ***list, int str_num, int pipe_num) {
+   // int output_fd, input_fd;
+    if (str_num > 1 && pipe_num > 0) {
         create_pipes(list, str_num);
     } else {
-        if (!cd_command(list[0]))
-            return list;
-        output_fd = 1;
-        input_fd = 0;
-        if (fork() > 0) { // родительский процесс ждёт завершения дочернего
-            wait(NULL);
-        } else {
-            check_symbols(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
-            if (execvp(list[0][0], list[0]) < 0) {
-                perror("Is failed");
-                clear_list(list);
-            }
-        }
+        pipeline_of_commands(list, str_num);
     }
     return list;
 }
 
 int main(int argc, char **argv) {
-    int str_num;
-    char ***list = get_cmd_list(&str_num);
+    int str_num, pipe_num;
+    char ***list = get_cmd_list(&str_num, &pipe_num);
     char finish1[] = "exit", finish2[] = "quit";
     while (strcmp(list[0][0], finish1) && strcmp(list[0][0], finish2)) { // делаем fork, пока не встретим exit или quit
-         list = run_commands(list, str_num);
+         list = run_commands(list, str_num, pipe_num);
          clear_list(list);
-         list = get_cmd_list(&str_num);
+         list = get_cmd_list(&str_num, &pipe_num);
    }
     clear_list(list); //удаляем строку с exit или quit
     return 0;
