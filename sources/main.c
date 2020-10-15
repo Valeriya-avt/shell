@@ -6,17 +6,30 @@
 #include <fcntl.h>
 #include <wait.h>
 
+// pid_t child_pid = 0;
+
+#define PURPLE "\x1b[1;35m"
+#define BLUE "\x1b[1;36m"
+#define SEPARATOR_DESIGN "\x1b[0m"
+
+void cmd_line_design() {
+    char *user = getenv("USER");
+    char *working_directory = getenv("PWD");
+    printf(BLUE "%s" SEPARATOR_DESIGN ":" PURPLE "%s" SEPARATOR_DESIGN "$ ", user, working_directory);
+    fflush(stdout);
+}
+
 char *get_word(char *end) {
     char *word = NULL, alpha;
     int n = 0;
     if (read(0, &alpha, sizeof(char)) < 0)
-        perror("Is failed");
+        perror("read");
     while (alpha != ' ' && alpha != '\t' && alpha != '\n') {
         word = realloc(word, (n + 1) * sizeof(char));
         word[n] = alpha;
         n++;
         if (read(0, &alpha, sizeof(char)) < 0)
-            perror("Is failed");
+            perror("read");
     }
     word = realloc(word, (n + 1) * sizeof(char));
     word[n] = '\0';
@@ -83,13 +96,13 @@ void clear_list(char ***list) {
     free(list);
 }
 
-void clear_cmd(char **cmd) {
-    int i;
-    for (i = 0; cmd[i] != NULL; i++)
-        free(cmd[i]);
-    free(cmd[i]);
-    free(cmd);
-}
+// void clear_cmd(char **cmd) {
+//     int i;
+//     for (i = 0; cmd[i] != NULL; i++)
+//         free(cmd[i]);
+//     free(cmd[i]);
+//     free(cmd);
+// }
 
 void change_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
     char *tmp;
@@ -230,9 +243,10 @@ void pipeline_of_commands(char ***list, int cmd_num) {
         if (fork() == 0) {
             check_symbols(list[i], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
             if (execvp(list[i][0], list[i]) < 0) {
-                perror("Is failed");
+                if (strcmp(list[i][0], "\0"))
+                    perror("wrong command");
              //   clear_list(list);
-                return;
+                exit(1);
             }
         } else {
             wait(&child_status);
@@ -243,7 +257,6 @@ void pipeline_of_commands(char ***list, int cmd_num) {
 }
 
 char ***run_commands(char ***list, int str_num, int pipe_num) {
-   // int output_fd, input_fd;
     if (str_num > 1 && pipe_num > 0) {
         create_pipes(list, str_num);
     } else {
@@ -252,14 +265,26 @@ char ***run_commands(char ***list, int str_num, int pipe_num) {
     return list;
 }
 
+void check_input(char ***list, int *str_num, int *pipe_num) {
+    while(list[0][0] == NULL) {
+        clear_list(list);
+        cmd_line_design();
+        list = get_cmd_list(str_num, pipe_num);
+    }
+}
+
 int main(int argc, char **argv) {
     int str_num, pipe_num;
+    cmd_line_design();
     char ***list = get_cmd_list(&str_num, &pipe_num);
     char finish1[] = "exit", finish2[] = "quit";
+    check_input(list, &str_num, &pipe_num);
     while (strcmp(list[0][0], finish1) && strcmp(list[0][0], finish2)) { // делаем fork, пока не встретим exit или quit
          list = run_commands(list, str_num, pipe_num);
          clear_list(list);
+         cmd_line_design();
          list = get_cmd_list(&str_num, &pipe_num);
+        check_input(list, &str_num, &pipe_num);
    }
     clear_list(list); //удаляем строку с exit или quit
     return 0;
