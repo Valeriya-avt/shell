@@ -103,87 +103,71 @@ void change_descriptors(char **list, int output_fd, int input_fd, int output_ind
     }
 }
 
-char *path_to_parent(char *old_path) {
-    char *parent = NULL;
-    int i, dir_counter = 0;
-    for (i = 0; old_path != NULL && old_path[i] != '\0'; i++) {
-        if (old_path[i] == '/')
-            dir_counter++;
+int open_file(char **list, int *fd, int output_flag, int input_flag, int index) {
+    if (input_flag > 1 || output_flag > 1) {
+        close(*fd);
+        puts("Is failed");
+        exit(1);
     }
-    for (i = 0; dir_counter; i++) {
-        if (old_path[i] == '/')
-            dir_counter--;
+    if (output_flag) {
+        *fd = open(list[index + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     }
-    parent = malloc((i + 1) * sizeof(char));
-    memcpy(parent, old_path, i);
-    parent[i] = '\0';
-    return parent;
+    else {
+        *fd = open(list[index + 1], O_RDONLY);
+    }
+    return index;
 }
 
-int change_directory(char **list) {
-    char *home = getenv("HOME"); // запомнили домашнюю директорию
-    char *old_path = getenv("PWD");
-    char *parent = NULL, *new_path = NULL;
-    if (!strcmp((list[0]), "cd")) {
-        if (list[1] == NULL || !strcmp(list[1], "~")) {
-            chdir(home);
-            new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-            setenv("PWD", new_path, 1);
-        } else {
-            if (!strcmp(list[1], "-")) {
-                if (!strcmp(home, old_path)) {
-                    parent = home;
-                } else {
-                    parent = path_to_parent(old_path);
-                }
-                chdir(parent);
-                new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-                setenv("PWD", new_path, 1);
-            } else {
-                chdir(list[1]);
-                new_path = getcwd(new_path, strlen(old_path) + strlen(home));
-                setenv("PWD", new_path, 1);
-            }
-        }
-        if (parent != NULL)
-            free(parent);
-        free(new_path);
-        return 0;
-    }
-    return 1;
-}
-
-void search_io_symbol(char **list, int *output, int *input) {
+void check_symbols(char **list, int *output, int *input) {
     int n = 0, output_flag = 0, input_flag = 0;
     int input_index = -1, output_index = -1; // изначально символы < > не найдены
-    char output_symbol[] = ">", input_symbol[] = "<"; // сохраним символы, которые будем искать
+    char output_symbol[] = ">", input_symbol[] = "<"; // bg_symbol[] = "&"; // сохраним символы, которые будем искать
     int output_fd = *output, input_fd = *input;
     while (list[n] != NULL && output_flag >= 0 && input_flag >= 0) { // будем бежать до конца строки
         if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // если нашли знак >
-            if (output_flag) {
-                close(output_fd);
-                puts("Is failed");
-                exit(1);
-            }
-            output_fd = open(list[n + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); // открыли файл на запись (считаем, что имя файла идёт сразу после >)
-            output_index = n;
             output_flag++;
+            output_index = open_file(list, &output_fd, output_flag, input_flag, n);
         }
         if (!strcmp(list[n], input_symbol) && list[n + 1] != NULL) { // если нашли знак <
-            if (input_flag) {
-                close(input_fd);
-                puts("Is failed");
-                exit(1);
-            }
-            input_fd = open(list[n + 1], O_RDONLY); // открыли файл на чтение
-            input_index = n;
             input_flag++;
+            input_index = open_file(list, &input_fd, output_flag, input_flag, n);
         }
         n++;
     }
-    if ((input_flag != -1 && output_flag != -1) && (input_flag || output_flag)) {
+    if (input_flag || output_flag) {
         change_descriptors(list, output_fd, input_fd, output_index, input_index);
     }
+}
+
+void change_directory(char *old_path, char *new_dir) {
+    char *new_path = NULL;
+    chdir(new_dir);
+    new_path = getcwd(new_path, strlen(old_path) + strlen(new_dir) + 2);
+    setenv("OLDPWD", old_path, 1); // обновляем путь до предыдущей директории
+    setenv("PWD", new_path, 1);
+    free(new_path);
+}
+
+int cd_command(char **list) {
+    char *home = getenv("HOME"); // запомнили домашнюю директорию
+    char *old_path = getenv("PWD");
+    if (!strcmp((list[0]), "cd")) {
+        if (list[1] == NULL || !strcmp(list[1], "~")) {
+            change_directory(old_path, home);
+        } else {
+            if (!strcmp(list[1], "-")) {
+                char *prev_dir = getenv("OLDPWD");
+                if (prev_dir == NULL)
+                    perror("cd");
+                else
+                    change_directory(old_path, prev_dir);
+            } else {
+                change_directory(old_path, list[1]);
+            }
+        }
+        return 0;
+    }
+    return 1;
 }
 
 void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
@@ -199,7 +183,7 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
             if (i != 0) {
                 dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
                 if (i == pipes - 1) {
-                    search_io_symbol(list[i], &pipefd[i - 1][1], &pipefd[i - 1][0]);
+                    check_symbols(list[i], &pipefd[i - 1][1], &pipefd[i - 1][0]);
                 }
                 close(pipefd[i - 1][1]);
                 close(pipefd[i - 1][0]);
@@ -207,7 +191,7 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
             if (i != (pipes - 1)) {
                 dup2(pipefd[i][1], 1); // пишем в текущий pipe
                 if (!i) {
-                    search_io_symbol(list[i], &pipefd[i][1], &pipefd[i][0]);
+                    check_symbols(list[i], &pipefd[i][1], &pipefd[i][0]);
                 }
                 close(pipefd[i][0]);
                 close(pipefd[i][1]);
@@ -235,14 +219,14 @@ char ***run_commands(char ***list, int str_num) {
     if (str_num > 1) { // && !flag
         create_pipes(list, str_num);
     } else {
-        if (!change_directory(list[0]))
+        if (!cd_command(list[0]))
             return list;
         output_fd = 1;
         input_fd = 0;
         if (fork() > 0) { // родительский процесс ждёт завершения дочернего
             wait(NULL);
         } else {
-            search_io_symbol(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+            check_symbols(list[0], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
             if (execvp(list[0][0], list[0]) < 0) {
                 perror("Is failed");
                 clear_list(list);
