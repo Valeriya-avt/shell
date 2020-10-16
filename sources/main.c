@@ -309,7 +309,7 @@ void handler(int signo) {
         printf("process pid %u\n", pids[i]);
         if (pids[i]) {
             printf("kill %u\n", pids[i]);
-            kill(pids[i], 0);
+            kill(pids[i], SIGINT);
         }
         wait(&status);
         pids[i] = 0;
