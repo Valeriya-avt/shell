@@ -302,15 +302,17 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
 }
 
 void handler(int signo) {
-    int i;
+    int i, status;
     putchar('\n');
     cmd_line_design();
     for (i = 0; i < num_of_processes; i++) {
-        printf("process status %u\n", pids[i]);
+        printf("process pid %u\n", pids[i]);
         if (pids[i]) {
             printf("kill %u\n", pids[i]);
             kill(pids[i], 0);
         }
+        wait(&status);
+        pids[i] = 0;
     }
 }
 
