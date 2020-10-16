@@ -8,6 +8,9 @@
 
 // pid_t child_pid = 0;
 
+int num_of_bg = 0, process_num = 0;
+pid_t *bg_pids = NULL, *pids = NULL;
+
 #define PURPLE "\x1b[1;35m"
 #define BLUE "\x1b[1;36m"
 #define SEPARATOR_DESIGN "\x1b[0m"
@@ -160,7 +163,10 @@ void check_symbols(char **list, int *output, int *input) {
 
 void change_directory(char *old_path, char *new_dir) {
     char *new_path = NULL;
-    chdir(new_dir);
+    if (chdir(new_dir)) {
+        perror("cd");
+        return;
+    }
     new_path = getcwd(new_path, strlen(old_path) + strlen(new_dir) + 2);
     setenv("OLDPWD", old_path, 1); // обновляем путь до предыдущей директории
     setenv("PWD", new_path, 1);
@@ -187,6 +193,28 @@ int cd_command(char **list) {
         return 0;
     }
     return 1;
+}
+
+void run_background(char **list) {
+    bg_pids = realloc(bg_pids, (num_of_bg + 1) * sizeof(pid_t));
+    free(list[1]);
+    list[1] = NULL;
+    bg_pids[num_of_bg] = fork();
+    if (bg_pids[num_of_bg] == 0) {
+        printf("[%d] %u", num_of_bg + 1, getpid());
+        execvp(list[0], list);
+        return;
+    }
+    num_of_bg++;
+    return;
+}
+
+int background_process(char **list) {
+    if (list[1] != NULL && !strcmp(list[1], "&")) {
+        run_background(list);
+        return 1;
+    }
+    return 0;
 }
 
 void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
@@ -238,13 +266,15 @@ void pipeline_of_commands(char ***list, int cmd_num) {
     for (i = 0; i < cmd_num; i++) {
         if (!cd_command(list[i]))
             return;
+        if (background_process(list[i]))
+            return;
         input_fd = 0;
         output_fd = 1;
         if (fork() == 0) {
             check_symbols(list[i], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
             if (execvp(list[i][0], list[i]) < 0) {
                 if (strcmp(list[i][0], "\0"))
-                    perror("wrong command");
+                    perror(list[i][0]);
              //   clear_list(list);
                 exit(1);
             }
@@ -274,7 +304,7 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
 }
 
 int main(int argc, char **argv) {
-    int str_num, pipe_num;
+    int i, str_num, pipe_num;
     cmd_line_design();
     char ***list = get_cmd_list(&str_num, &pipe_num);
     char finish1[] = "exit", finish2[] = "quit";
@@ -284,8 +314,12 @@ int main(int argc, char **argv) {
          clear_list(list);
          cmd_line_design();
          list = get_cmd_list(&str_num, &pipe_num);
-        check_input(list, &str_num, &pipe_num);
+         check_input(list, &str_num, &pipe_num);
    }
     clear_list(list); //удаляем строку с exit или quit
+    for (i = 0; i < num_of_bg; i++) {
+        waitpid(bg_pids[i], NULL, 0);
+    }
+    free(bg_pids);
     return 0;
 }
