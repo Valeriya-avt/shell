@@ -7,21 +7,12 @@
 #include <wait.h>
 #include <signal.h>
 
-// pid_t child_pid = 0;
-
 int num_of_bg = 0, num_of_processes = 0;
 pid_t *bg_pids = NULL, *pids = NULL;
 
 #define PURPLE "\x1b[1;35m"
 #define BLUE "\x1b[1;36m"
 #define SEPARATOR_DESIGN "\x1b[0m"
-
-void cmd_line_design() {
-    char *user = getenv("USER");
-    char *working_directory = getenv("PWD");
-    printf(BLUE "%s" SEPARATOR_DESIGN ":" PURPLE "%s" SEPARATOR_DESIGN "$ ", user, working_directory);
-    fflush(stdout);
-}
 
 char *get_word(char *end) {
     char *word = NULL, alpha;
@@ -103,52 +94,47 @@ void clear_list(char ***list) {
     num_of_processes = 0;
 }
 
-void change_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
-    char *tmp;
-    if (output_index > 0) { // если нашли знак >
-        dup2(output_fd, 1); // направили вывод программы в файл
-        free(list[output_index + 1]); // удалили элемент с названием файла
-        tmp = list[output_index];
-        list[output_index] = NULL; // конец строки указывает на NULL
-        free(tmp); // удалили элемент со знаком >
-    }
-    if (input_index > 0) {
-        dup2(input_fd, 0); // теперь считывать будем из файла
-        free(list[input_index + 1]);
-        tmp = list[input_index];
-        list[input_index] = NULL;
-        free(tmp);
-    }
+void duplicate_fd(char **list, int index, int old_fd, int new_fd) {
+    dup2(old_fd, new_fd);
+    free(list[index + 1]);
+    free(list[index]);
+    list[index] = NULL;
 }
 
-int open_file(char **list, int *fd, int output_flag, int input_flag, int index) {
+void change_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
+    if (input_index > 0) // if found <
+        duplicate_fd(list, input_index, input_fd, 0);
+    if (output_index > 0) // if found >
+        duplicate_fd(list, output_index, output_fd, 1);
+}
+
+int open_file(char **list, int *fd, int output_flag, int input_flag, int index, int flag) {
     if (input_flag > 1 || output_flag > 1) {
         close(*fd);
         puts("Is failed");
         exit(1);
     }
-    if (output_flag) {
+    if (flag) {
         *fd = open(list[index + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    }
-    else {
+    } else {
         *fd = open(list[index + 1], O_RDONLY);
     }
     return index;
 }
 
-void check_symbols(char **list, int *output, int *input) {
+void check_io_symbols(char **list, int *output, int *input) {
     int n = 0, output_flag = 0, input_flag = 0;
-    int input_index = -1, output_index = -1; // изначально символы < > не найдены
-    char output_symbol[] = ">", input_symbol[] = "<"; // bg_symbol[] = "&"; // сохраним символы, которые будем искать
+    int input_index = -1, output_index = -1; // initially < > not found
+    char output_symbol[] = ">", input_symbol[] = "<";
     int output_fd = *output, input_fd = *input;
-    while (list[n] != NULL && output_flag >= 0 && input_flag >= 0) { // будем бежать до конца строки
-        if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // если нашли знак >
+    while (list[n] != NULL) {
+        if (!strcmp(list[n], output_symbol) && list[n + 1] != NULL) { // if found >
             output_flag++;
-            output_index = open_file(list, &output_fd, output_flag, input_flag, n);
+            output_index = open_file(list, &output_fd, output_flag, input_flag, n, 1);
         }
-        if (!strcmp(list[n], input_symbol) && list[n + 1] != NULL) { // если нашли знак <
+        if (!strcmp(list[n], input_symbol) && list[n + 1] != NULL) { // if found <
             input_flag++;
-            input_index = open_file(list, &input_fd, output_flag, input_flag, n);
+            input_index = open_file(list, &input_fd, output_flag, input_flag, n, 0);
         }
         n++;
     }
@@ -164,13 +150,13 @@ void change_directory(char *old_path, char *new_dir) {
         return;
     }
     new_path = getcwd(new_path, strlen(old_path) + strlen(new_dir) + 2);
-    setenv("OLDPWD", old_path, 1); // обновляем путь до предыдущей директории
+    setenv("OLDPWD", old_path, 1); // update the path to the previous directory
     setenv("PWD", new_path, 1);
     free(new_path);
 }
 
 int cd_command(char **list) {
-    char *home = getenv("HOME"); // запомнили домашнюю директорию
+    char *home = getenv("HOME");
     char *old_path = getenv("PWD");
     if (!strcmp((list[0]), "cd")) {
         if (list[1] == NULL || !strcmp(list[1], "~")) {
@@ -186,9 +172,9 @@ int cd_command(char **list) {
                 change_directory(old_path, list[1]);
             }
         }
-        return 0;
+        return 1;
     }
-    return 1;
+    return 0;
 }
 
 void run_background(char **list) {
@@ -197,8 +183,8 @@ void run_background(char **list) {
     list[1] = NULL;
     bg_pids[num_of_bg] = fork();
     if (bg_pids[num_of_bg] == 0) {
-   //     printf("[%d] %u", num_of_bg + 1, getpid());
         execvp(list[0], list);
+        perror(list[0]);
         return;
     }
     num_of_bg++;
@@ -213,10 +199,9 @@ int background_process(char **list) {
     return 0;
 }
 
-void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
-//    pid_t pids[10];
+void create_pipes(char ***list, int pipes) { // pipes - number of processes in the pipeline
     int (*pipefd)[2], i;
-    pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe
+    pipefd = malloc((pipes - 1) * sizeof(int [2])); // number of pipes for n processes is (n - 1)
     for (i = 0; i < pipes; ++i) {
         if (i != (pipes - 1)) {
             pipe(pipefd[i]);
@@ -225,17 +210,17 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
         pids[num_of_processes] = fork();
         if (pids[num_of_processes] == 0) {
             if (i != 0) {
-                dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
+                dup2(pipefd[i - 1][0], 0); // read from previous pipe
                 if (i == pipes - 1) {
-                    check_symbols(list[i], &pipefd[i - 1][1], &pipefd[i - 1][0]);
+                    check_io_symbols(list[i], &pipefd[i - 1][1], &pipefd[i - 1][0]);
                 }
                 close(pipefd[i - 1][1]);
                 close(pipefd[i - 1][0]);
             }
             if (i != (pipes - 1)) {
-                dup2(pipefd[i][1], 1); // пишем в текущий pipe
+                dup2(pipefd[i][1], 1);
                 if (!i) {
-                    check_symbols(list[i], &pipefd[i][1], &pipefd[i][0]);
+                    check_io_symbols(list[i], &pipefd[i][1], &pipefd[i][0]);
                 }
                 close(pipefd[i][0]);
                 close(pipefd[i][1]);
@@ -245,6 +230,8 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
                 close(pipefd[j][1]);
             }
             execvp(list[i][0], list[i]);
+            perror(list[i][0]);
+            exit(1);
         }
         num_of_processes++;
     }
@@ -262,7 +249,7 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
 void pipeline_of_commands(char ***list, int cmd_num) {
     int i, input_fd, output_fd, child_status;
     for (i = 0; i < cmd_num; i++) {
-        if (!cd_command(list[i]))
+        if (cd_command(list[i]))
             return;
         if (background_process(list[i]))
             return;
@@ -271,11 +258,10 @@ void pipeline_of_commands(char ***list, int cmd_num) {
         pids = realloc(pids, (num_of_processes + 1) * sizeof(pid_t));
         pids[num_of_processes] = fork();
         if (pids[num_of_processes] == 0) {
-            check_symbols(list[i], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
+            check_io_symbols(list[i], &output_fd, &input_fd);
             if (execvp(list[i][0], list[i]) < 0) {
-                if (strcmp(list[i][0], "\0"))
+                if (strcmp(list[i][0], "")) // if not '\n'
                     perror(list[i][0]);
-             //   clear_list(list);
                 exit(1);
             }
         } else {
@@ -297,6 +283,13 @@ char ***run_commands(char ***list, int str_num, int pipe_num) {
     return list;
 }
 
+void cmd_line_design() {
+    char *user = getenv("USER");
+    char *working_directory = getenv("PWD");
+    printf(BLUE "%s" SEPARATOR_DESIGN ":" PURPLE "%s" SEPARATOR_DESIGN "$ ", user, working_directory);
+    fflush(stdout); // forces a write of all user-space buffered data in stdout
+}
+
 void check_input(char ***list, int *str_num, int *pipe_num) {
     while(list[0][0] == NULL) {
         clear_list(list);
@@ -307,10 +300,13 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
 
 void handler(int signo) {
     int i;
-    puts("I'm sigint");
+    putchar('\n');
     for (i = 0; i < num_of_processes; i++) {
-        printf("kill %u", pids[i]);
-        kill(pids[i], 0);
+        printf("process status %u\n", pids[i]);
+        if (pids[i]) {
+            printf("kill %u\n", pids[i]);
+            kill(pids[i], 0);
+        }
     }
 }
 
@@ -321,14 +317,14 @@ int main(int argc, char **argv) {
     char ***list = get_cmd_list(&str_num, &pipe_num);
     char finish1[] = "exit", finish2[] = "quit";
     check_input(list, &str_num, &pipe_num);
-    while (strcmp(list[0][0], finish1) && strcmp(list[0][0], finish2)) { // делаем fork, пока не встретим exit или quit
+    while (strcmp(list[0][0], finish1) && strcmp(list[0][0], finish2)) {
          list = run_commands(list, str_num, pipe_num);
          clear_list(list);
          cmd_line_design();
          list = get_cmd_list(&str_num, &pipe_num);
          check_input(list, &str_num, &pipe_num);
    }
-    clear_list(list); //удаляем строку с exit или quit
+    clear_list(list); // delete list with exit or quit
     for (i = 0; i < num_of_bg; i++) {
         waitpid(bg_pids[i], NULL, 0);
     }
