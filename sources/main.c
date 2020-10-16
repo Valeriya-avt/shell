@@ -5,10 +5,11 @@
 #include <string.h>
 #include <fcntl.h>
 #include <wait.h>
+#include <signal.h>
 
 // pid_t child_pid = 0;
 
-int num_of_bg = 0, process_num = 0;
+int num_of_bg = 0, num_of_processes = 0;
 pid_t *bg_pids = NULL, *pids = NULL;
 
 #define PURPLE "\x1b[1;35m"
@@ -97,15 +98,10 @@ void clear_list(char ***list) {
     }
     free(list[i]);
     free(list);
+    free(pids);
+    pids = NULL;
+    num_of_processes = 0;
 }
-
-// void clear_cmd(char **cmd) {
-//     int i;
-//     for (i = 0; cmd[i] != NULL; i++)
-//         free(cmd[i]);
-//     free(cmd[i]);
-//     free(cmd);
-// }
 
 void change_descriptors(char **list, int output_fd, int input_fd, int output_index, int input_index) {
     char *tmp;
@@ -201,7 +197,7 @@ void run_background(char **list) {
     list[1] = NULL;
     bg_pids[num_of_bg] = fork();
     if (bg_pids[num_of_bg] == 0) {
-        printf("[%d] %u", num_of_bg + 1, getpid());
+   //     printf("[%d] %u", num_of_bg + 1, getpid());
         execvp(list[0], list);
         return;
     }
@@ -218,15 +214,16 @@ int background_process(char **list) {
 }
 
 void create_pipes(char ***list, int pipes) { // в pipes число процессов в конвейере
-    pid_t pids[10];
+//    pid_t pids[10];
     int (*pipefd)[2], i;
     pipefd = malloc((pipes - 1) * sizeof(int [2])); // для n процессов (n - 1) pipe
     for (i = 0; i < pipes; ++i) {
         if (i != (pipes - 1)) {
             pipe(pipefd[i]);
         }
-        pids[i] = fork();
-        if (pids[i] == 0) {
+        pids = realloc(pids, (num_of_processes + 1) * sizeof(pid_t));
+        pids[num_of_processes] = fork();
+        if (pids[num_of_processes] == 0) {
             if (i != 0) {
                 dup2(pipefd[i - 1][0], 0); // читаем из предыдущего pipe
                 if (i == pipes - 1) {
@@ -249,6 +246,7 @@ void create_pipes(char ***list, int pipes) { // в pipes число процес
             }
             execvp(list[i][0], list[i]);
         }
+        num_of_processes++;
     }
     for (i = 0; i < pipes; i++) {
         if (i != (pipes - 1)) {
@@ -270,7 +268,9 @@ void pipeline_of_commands(char ***list, int cmd_num) {
             return;
         input_fd = 0;
         output_fd = 1;
-        if (fork() == 0) {
+        pids = realloc(pids, (num_of_processes + 1) * sizeof(pid_t));
+        pids[num_of_processes] = fork();
+        if (pids[num_of_processes] == 0) {
             check_symbols(list[i], &output_fd, &input_fd); // в дочернем процессе ищем знаки < > в строке
             if (execvp(list[i][0], list[i]) < 0) {
                 if (strcmp(list[i][0], "\0"))
@@ -279,7 +279,9 @@ void pipeline_of_commands(char ***list, int cmd_num) {
                 exit(1);
             }
         } else {
+            num_of_processes++;
             wait(&child_status);
+            pids[i] = 0;
             if (child_status != 0)
                 return;
         }
@@ -303,8 +305,18 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
     }
 }
 
+void handler(int signo) {
+    int i;
+    puts("I'm sigint");
+    for (i = 0; i < num_of_processes; i++) {
+        printf("kill %u", pids[i]);
+        kill(pids[i], 0);
+    }
+}
+
 int main(int argc, char **argv) {
     int i, str_num, pipe_num;
+    signal(SIGINT, handler);
     cmd_line_design();
     char ***list = get_cmd_list(&str_num, &pipe_num);
     char finish1[] = "exit", finish2[] = "quit";
