@@ -232,17 +232,20 @@ void create_pipes(char ***list, int pipes) { // pipes - number of processes in t
             execvp(list[i][0], list[i]);
             perror(list[i][0]);
             exit(1);
+        } else {
+            for (int j = 0; j < i; j++) {
+                    close(pipefd[j][0]);
+                    close(pipefd[j][1]);
+            }
         }
         num_of_processes++;
     }
-    for (i = 0; i < pipes; i++) {
-        if (i != (pipes - 1)) {
-            close(pipefd[i][0]);
-            close(pipefd[i][1]);
-        }
-        waitpid(pids[i], NULL, 0);
-        pids[i] = 0;
-    }
+    close(pipefd[pipes - 2][0]);
+    close(pipefd[pipes - 2][1]);
+   for (i = 0; i < pipes; i++) {
+       waitpid(pids[i], NULL, 0);
+       pids[i] = 0;
+   }
     free(pipefd);
 }
 
@@ -301,6 +304,7 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
 void handler(int signo) {
     int i;
     putchar('\n');
+    cmd_line_design();
     for (i = 0; i < num_of_processes; i++) {
         printf("process status %u\n", pids[i]);
         if (pids[i]) {
