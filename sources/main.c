@@ -198,7 +198,7 @@ void run_background(char **list, int index) {
 int background_process(char **list) {
     int i;
     for (i = 0; list[i] != NULL; i++) {
-        if (list[1] != NULL && !strcmp(list[i], "&")) {
+        if (list[i] != NULL && !strcmp(list[i], "&")) {
             run_background(list, i);
             return 1;
         }
