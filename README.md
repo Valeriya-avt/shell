@@ -35,27 +35,78 @@
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/Run%20.gif" width="80%"></p>
  
 ### How to use:
- First, let's look at the contents of the current directory. To do this, we will use the command **ls**.
+ First, let's look at the contents of the current directory. To do this, we will use the command `ls`.
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/sl1.gif" width="80%"></p>
  Oops! Well... Now we know that the <del>most important</del> funniest command can work!
  We know where to find a locomotive. Let's travel through directories!
- - Let's go to the parent directory using `сd` and using `pwd` to check that we really are in the parent directory:
+ Let's go to the parent directory using `сd` and using `pwd` to check that we really are in the parent directory:
+
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/parent_dir%20and%20pwd.gif" width="80%"></p>
- - Let's try using a combination of `cd` (or `cd ~`) and `cd -` to move between the current and home directories:
+
+ Let's try using a combination of `cd` (or `cd ~`) and `cd -` to move between the current and home directories:
+
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/home_dir%20and%20cd%20-%20.gif" width="80%"></p>
+
  Very well! We can move from one directory to another!
- 
  Before choosing the next destination, let's look at the contents of the current directory using the `ls` command and go to any directory we find.
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/ls%2C%20cd%20test.gif" width="80%"></p>
 
  Let's create some files, write to the file only what we are looking for, and display it on the screen using 
-`ls > file.txt && grep -r .c < file.txt`
 
- Let's check how the "|" pipeline works:
+ ```ls > file.txt && grep -r .c < file.txt```
+
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/ls%2C%20cd%20test.gif" width="80%"></p>
+
+We can redirect input and output at the same time:
+ ```
+grep file < file.txt > file1.txt
+ ```
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/read%2C%20write.gif" width="80%"></p>
+
+ ```
+grep file > file2.txt < file.txt
+ ```
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/read%2C%20write%201.gif" width="80%"></p>
+
+ Let's check how the `|` pipeline works:
  1. `ls -l | grep .txt`
  2. `ls | sort | grep c` and `ls | grep c | sort`
- 3. `sleep 10 | ls | sort`
+
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/ls%2C%20sort%2C%20grep.gif" width="80%"></p>
+
+ 3. `sleep 5 | ls | sort`
+
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/sleep%2C%20ls%2C%20sort.gif" width="80%"></p>
+
+ Let's start the pipeline from the previous example, but now we will not wait until the `sleep` is completed, we will use the keyboard shortcut **Ctrl + C**
+
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/sleep%2C%20Ctrl%20%2B%20C.gif" width="80%"></p>
+
+Also in the pipeline, we can do input and output redirection:
+
+```
+cut -f 1 < file.txt | grep .txt | sort > file1.txt
+
+```
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/pipe%20with%20input%2C%20output.gif" width="80%"></p>
+
+ Now let's see how the "&&" pipeline works. Let's try to copy the code of any of the existing programs into a new file, compile and run the program by entering only one line:
+
+```cp prog.c prog1.c && gcc prog1.c -o prog1 && ./prog1```
+
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/cp%2C%20gcc%2C%20run.gif" width="80%"></p>
+
+
+
