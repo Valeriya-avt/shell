@@ -118,6 +118,10 @@ int open_file(char **list, int *fd, int output_flag, int input_flag, int index, 
         *fd = open(list[index + 1], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     } else {
         *fd = open(list[index + 1], O_RDONLY);
+        if (*fd < 0) {
+            perror(list[index + 1]);
+            exit(1);
+        }
     }
     return index;
 }
@@ -177,10 +181,10 @@ int cd_command(char **list) {
     return 0;
 }
 
-void run_background(char **list) {
+void run_background(char **list, int index) {
     bg_pids = realloc(bg_pids, (num_of_bg + 1) * sizeof(pid_t));
-    free(list[1]);
-    list[1] = NULL;
+    free(list[index]);
+    list[index] = NULL;
     bg_pids[num_of_bg] = fork();
     if (bg_pids[num_of_bg] == 0) {
         execvp(list[0], list);
@@ -192,9 +196,12 @@ void run_background(char **list) {
 }
 
 int background_process(char **list) {
-    if (list[1] != NULL && !strcmp(list[1], "&")) {
-        run_background(list);
-        return 1;
+    int i;
+    for (i = 0; list[i] != NULL; i++) {
+        if (list[1] != NULL && !strcmp(list[i], "&")) {
+            run_background(list, i);
+            return 1;
+        }
     }
     return 0;
 }
@@ -302,7 +309,7 @@ void check_input(char ***list, int *str_num, int *pipe_num) {
 }
 
 void handler(int signo) {
-    int i, status;
+    int i;
     putchar('\n');
     cmd_line_design();
     for (i = 0; i < num_of_processes; i++) {
@@ -311,7 +318,7 @@ void handler(int signo) {
             printf("kill %u\n", pids[i]);
             kill(pids[i], SIGINT);
         }
-        wait(&status);
+        waitpid(pids[i], NULL, 0);
         pids[i] = 0;
     }
 }
