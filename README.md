@@ -116,7 +116,7 @@ cut -f 1 < file.txt | grep .txt | sort > file1.txt
 The work of our shell can be terminated using `exit` or `quit`. The shell will not be terminated until all background processes have finished:
 
 <p align="center">
-<img src="background and exit" width="80%"></p>
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/background%20and%20exit.gif" width="80%"></p>
 
 Thanks for seeing how this shell works! I hope you find it useful. I look forward to comments and new ideas!
 
