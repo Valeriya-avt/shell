@@ -38,6 +38,7 @@
  First, let's look at the contents of the current directory. To do this, we will use the command `ls`.
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/sl1.gif" width="80%"></p>
+
  Oops! Well... Now we know that the <del>most important</del> funniest command can work!
  We know where to find a locomotive. Let's travel through directories!
  Let's go to the parent directory using `сd` and using `pwd` to check that we really are in the parent directory:
@@ -96,7 +97,6 @@ Also in the pipeline, we can do input and output redirection:
 
 ```
 cut -f 1 < file.txt | grep .txt | sort > file1.txt
-
 ```
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/pipe%20with%20input%2C%20output.gif" width="80%"></p>
@@ -108,5 +108,15 @@ cut -f 1 < file.txt | grep .txt | sort > file1.txt
 <p align="center">
 <img src="https://github.com/Valeriya-avt/shell/blob/master/images/cp%2C%20gcc%2C%20run.gif" width="80%"></p>
 
+ Let's make sure that by starting the background process, we can work in our shell:
 
+<p align="center">
+<img src="https://github.com/Valeriya-avt/shell/blob/master/images/background.gif" width="80%"></p>
+
+The work of our shell can be terminated using `exit` or `quit`. The shell will not be terminated until all background processes have finished:
+
+<p align="center">
+<img src="background and exit" width="80%"></p>
+
+Thanks for seeing how this shell works! I hope you find it useful. I look forward to comments and new ideas!
 
