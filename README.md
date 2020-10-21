@@ -21,6 +21,9 @@
 ### How to compile:
 
  - Download "sources" and Makefile;
+ ```
+ git clone ...
+ ```
  - Press the key combination Ctrl + Alt + T;
  - Use the `cd` command to go to the directory where these files are stored. Pass the path to the required directory as a parameter;
  - Use the `make` command to compile.
